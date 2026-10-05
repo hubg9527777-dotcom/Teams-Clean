@@ -1,0 +1,87 @@
+{
+  "scope": "v6.0.4 named source/test/document files only",
+  "files": [
+    {
+      "file": "manifest.json",
+      "bytes": 1073,
+      "lines": 48
+    },
+    {
+      "file": "api-main.js",
+      "bytes": 11126,
+      "lines": 206
+    },
+    {
+      "file": "api-policy.js",
+      "bytes": 8302,
+      "lines": 138
+    },
+    {
+      "file": "core.js",
+      "bytes": 4558,
+      "lines": 92
+    },
+    {
+      "file": "inject.js",
+      "bytes": 64498,
+      "lines": 1219
+    },
+    {
+      "file": "network-api.js",
+      "bytes": 6110,
+      "lines": 107
+    },
+    {
+      "file": "network-observer.js",
+      "bytes": 6006,
+      "lines": 102
+    },
+    {
+      "file": "README.md",
+      "bytes": 7481,
+      "lines": 69
+    },
+    {
+      "file": "设计与实现说明.md",
+      "bytes": 3063,
+      "lines": 27
+    },
+    {
+      "file": "LICENSE",
+      "bytes": 1064,
+      "lines": 21
+    },
+    {
+      "file": "Teams-v1.0.2源码核查说明.md",
+      "bytes": 6046,
+      "lines": 71
+    },
+    {
+      "file": "tests/policy.test.cjs",
+      "bytes": 16198,
+      "lines": 318
+    },
+    {
+      "file": "tests/runner.test.cjs",
+      "bytes": 10137,
+      "lines": 185
+    },
+    {
+      "file": "tests/diagnostics.test.cjs",
+      "bytes": 5831,
+      "lines": 102
+    },
+    {
+      "file": "tests/network-api.test.cjs",
+      "bytes": 6042,
+      "lines": 112
+    },
+    {
+      "file": "tests/network-ui.test.cjs",
+      "bytes": 11412,
+      "lines": 183
+    }
+  ],
+  "realSecretPatterns": [],
+  "limitations": "Pattern scan is not proof of absence. Test literals manually reviewed. No git history available."
+}

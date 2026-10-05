@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Teams Clean",
+  "version": "6.0.5",
+  "description": "个人 Teams：聊天私有接口校准（实验）与录制后备，联络人和活动独立录制回放。",
+  "icons": {
+    "128": "icon.png"
+  },
+  "permissions": [
+    "storage",
+    "webRequest"
+  ],
+  "minimum_chrome_version": "111",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://teams.live.com/*"
+      ],
+      "js": [
+        "core.js",
+        "api-policy.js",
+        "inject.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "https://teams.live.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
+  },
+  "background": {
+    "service_worker": "network-observer.js"
+  }
+}
