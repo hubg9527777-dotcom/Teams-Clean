@@ -1,0 +1,36 @@
+name: Package & Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Package Extension ZIP
+        run: |
+          zip -r Teams-Clean-${{ github.ref_name }}.zip \
+            manifest.json \
+            core.js \
+            inject.js \
+            api-policy.js \
+            network-api.js \
+            network-observer.js \
+            icon.png \
+            README.md \
+            LICENSE
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Teams-Clean-${{ github.ref_name }}.zip
+          generate_release_notes: true
