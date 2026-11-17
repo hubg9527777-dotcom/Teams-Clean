@@ -6,31 +6,60 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          check-latest: true
+          package-manager-cache: false
+
+      - name: Regression tests
+        run: node --test tests/*.test.cjs
 
       - name: Package Extension ZIP
-        run: |
-          zip -r Teams-Clean-${{ github.ref_name }}.zip \
-            manifest.json \
-            core.js \
-            inject.js \
-            api-policy.js \
-            network-api.js \
-            network-observer.js \
-            icon.png \
-            README.md \
-            LICENSE
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: node scripts/package.cjs
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          check-latest: true
+          package-manager-cache: false
+
+      - name: Package verified commit
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: node scripts/package.cjs
 
       - name: Create Release and Upload Asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          files: Teams-Clean-${{ github.ref_name }}.zip
+          files: dist/Teams-Clean-*.zip
+          fail_on_unmatched_files: true
           generate_release_notes: true

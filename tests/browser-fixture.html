@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Teams Clean isolated browser regression</title>
+<style>
+body{font:16px system-ui;margin:28px;background:#f5f6fa;color:#222}main{max-width:660px}#fixture-records{height:245px;overflow:auto;background:white;border:1px solid #bbb;border-radius:8px}.record{height:66px;box-sizing:border-box;padding:14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ddd}button{padding:7px 12px;cursor:pointer}[role=menu],[role=dialog],[role=alertdialog]{position:fixed;z-index:999;background:white;border:1px solid #888;padding:18px;box-shadow:0 5px 18px #0003}[role=dialog],[role=alertdialog]{top:150px;left:180px;width:300px}#report{white-space:pre-wrap;margin-top:24px}p{line-height:1.5}
+</style>
+<main><h1>Isolated regression fixture</h1><p>All rows are synthetic. No Teams connection, requests, accounts or credentials.</p><p>Record deleting Sample 1 using More options → Delete → Delete. Sample 2 fails once; Sample 4 always refuses. Expected: 2 automatic removals, 1 unresolved item, no stopped queue.</p><div id="fixture-records" role="list" aria-label="Synthetic contacts"></div><div id="report" role="status"></div></main>
+<script>
+const storage = {}
+globalThis.chrome = {storage:{local:{get:async key => ({[key]:storage[key]}), set:async values=>Object.assign(storage, values)}}}
+sessionStorage.setItem('teams-clean-kind-v6','contacts')
+const fixture = { attempts:{}, removed:[], syntheticEvents:0 }
+function report(){document.getElementById('report').textContent='Removed rows: '+fixture.removed.join(', ')+'\nDeletion attempts: '+JSON.stringify(fixture.attempts)+'\nScript mouse events received: '+fixture.syntheticEvents}
+function closeLayers(){document.querySelectorAll('[role=menu],[role=dialog],[role=alertdialog]').forEach(node=>node.remove())}
+function button(label,handler){const b=document.createElement('button');b.textContent=label;b.addEventListener('click',handler);return b}
+function error(label){closeLayers();const d=document.createElement('div');d.setAttribute('role','alertdialog');d.textContent=label;d.append(button('OK',closeLayers));document.body.append(d)}
+function removeRecord(row){closeLayers();const d=document.createElement('div');d.setAttribute('role','dialog');d.textContent='Delete this contact?';d.append(button('Cancel',closeLayers),button('Delete',()=>{
+ const id=row.getAttribute('data-contact-id');fixture.attempts[id]=(fixture.attempts[id]||0)+1;closeLayers();
+ setTimeout(()=>{if(id==='sample-2'&&fixture.attempts[id]===1) error('Try again later');else if(id==='sample-4')error('Cannot delete this contact');else{row.remove();fixture.removed.push(id)}report()},250)
+}));document.body.append(d)}
+function menu(row,event){if(!event.isTrusted)fixture.syntheticEvents++;event.preventDefault();setTimeout(()=>{closeLayers();const m=document.createElement('div');m.setAttribute('role','menu');m.style.left=(130+(fixture.removed.length%2)*80)+'px';m.style.top='360px';m.append(button('Delete',()=>removeRecord(row)));m.addEventListener('keydown',e=>{if(e.key==='Escape')closeLayers()});document.body.append(m)},200)}
+for(let i=1;i<=4;i++){const row=document.createElement('div');row.className='record';row.setAttribute('role','listitem');row.setAttribute('data-contact-id','sample-'+i);row.append('Sample '+i);const more=button('More options',e=>menu(row,e));more.setAttribute('data-tid','more-options');row.append(more);row.addEventListener('contextmenu',e=>menu(row,e));document.getElementById('fixture-records').append(row)}report()
+</script>
+<script src="../core.js"></script><script src="../dom-engine.js"></script><script src="../api-policy.js"></script><script src="../inject.js"></script>
+</html>

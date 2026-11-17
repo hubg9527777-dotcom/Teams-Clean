@@ -61,6 +61,7 @@ function harness (responseFactory = () => new Response(null, { status: 200 }), e
     click: name => ui[name].listeners.click({isTrusted:true}),
     snapshot: () => ({ ready: apiReady, manual: apiManualAck, verified: apiVerified, transport: apiTransport, calibration: apiCalibration, hidden: state.hidden.size, phase: state.phase, success: state.success, uncertain: state.uncertain || 0, startDisabled: ui.start.disabled, probeDisabled: ui.probe.disabled, verifyHidden: ui.verify.hidden, status: ui.status.textContent, steps: ui.steps.textContent }),
     run: resumed => startRun({kind:'chat',engine:'api'}, resumed), stop: stopRun,
+    expireDeadline: () => { networkDeadline = Date.now()-1 },
     export: exportDiagnostics
   };
   init()
@@ -158,6 +159,18 @@ test('接口401在验证阶段停止，不开放批量', async () => {
   assert.equal(h.api.snapshot().ready, false)
   assert.equal(h.api.snapshot().startDisabled, true)
   assert.equal(h.api.snapshot().verified, false)
+})
+
+test('本地认证模板超过空闲期限后不发送任何新删除请求', async () => {
+  const h = harness()
+  await h.api.click('calibrate'); h.manual(); await h.api.click('calibrate')
+  assert.equal(h.calls.length, 1)
+  h.api.expireDeadline()
+  await h.api.click('start')
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.api.snapshot().ready, false)
+  assert.equal(h.api.snapshot().startDisabled, true)
+  assert.match(h.api.snapshot().status, /校准已过期/)
 })
 
 test('未知200响应不能直接开放批量，明确要求核对', async () => {

@@ -1,87 +1,58 @@
 {
-  "scope": "v6.0.4 named source/test/document files only",
-  "files": [
+  "generatedAt": "2026-11-17T15:15:11.666Z",
+  "scope": "Project working files including raw binary strings; local Git config and reachable Git blobs. Excludes other .git internals, node_modules and dist. No OCR; no remote/deleted Git objects. ZIP entries require separate artifact inspection.",
+  "workingFiles": 31,
+  "historicalBlobs": 21,
+  "historyAvailable": true,
+  "gitConfigScanned": true,
+  "trackedSensitivePaths": [],
+  "ignoreChecks": {
+    ".env": true,
+    ".env.local": true,
+    ".env.production": true,
+    ".env.example": false,
+    "sample.pem": true,
+    "sample.key": true,
+    "sample.har": true
+  },
+  "candidates": [
     {
-      "file": "manifest.json",
-      "bytes": 1073,
-      "lines": 48
-    },
-    {
-      "file": "api-main.js",
-      "bytes": 11126,
-      "lines": 206
-    },
-    {
-      "file": "api-policy.js",
-      "bytes": 8302,
-      "lines": 138
-    },
-    {
-      "file": "core.js",
-      "bytes": 4558,
-      "lines": 92
-    },
-    {
-      "file": "inject.js",
-      "bytes": 64498,
-      "lines": 1219
-    },
-    {
-      "file": "network-api.js",
-      "bytes": 6110,
-      "lines": 107
-    },
-    {
-      "file": "network-observer.js",
-      "bytes": 6006,
-      "lines": 102
-    },
-    {
-      "file": "README.md",
-      "bytes": 7481,
-      "lines": 69
-    },
-    {
-      "file": "设计与实现说明.md",
-      "bytes": 3063,
-      "lines": 27
-    },
-    {
-      "file": "LICENSE",
-      "bytes": 1064,
-      "lines": 21
-    },
-    {
-      "file": "Teams-v1.0.2源码核查说明.md",
-      "bytes": 6046,
-      "lines": 71
-    },
-    {
+      "source": "working-tree",
       "file": "tests/policy.test.cjs",
-      "bytes": 16198,
-      "lines": 318
+      "line": 150,
+      "rule": "credential-assignment",
+      "classification": "known-test-fixture"
     },
     {
-      "file": "tests/runner.test.cjs",
-      "bytes": 10137,
-      "lines": 185
+      "source": "working-tree",
+      "file": "tests/policy.test.cjs",
+      "line": 150,
+      "rule": "credential-assignment",
+      "classification": "known-test-fixture"
     },
     {
-      "file": "tests/diagnostics.test.cjs",
-      "bytes": 5831,
-      "lines": 102
+      "source": "reachable-git-history",
+      "file": "tests/policy.test.cjs@6f19b120185d",
+      "line": 150,
+      "rule": "credential-assignment",
+      "classification": "known-test-fixture"
     },
     {
-      "file": "tests/network-api.test.cjs",
-      "bytes": 6042,
-      "lines": 112
-    },
-    {
-      "file": "tests/network-ui.test.cjs",
-      "bytes": 11412,
-      "lines": 183
+      "source": "reachable-git-history",
+      "file": "tests/policy.test.cjs@6f19b120185d",
+      "line": 150,
+      "rule": "credential-assignment",
+      "classification": "known-test-fixture"
     }
   ],
-  "realSecretPatterns": [],
-  "limitations": "Pattern scan is not proof of absence. Test literals manually reviewed. No git history available."
+  "reviewRequired": 0,
+  "packaged_artifact": {
+    "file": "Teams-Clean-v6.3.1.zip",
+    "entries": 11,
+    "crc_verified": true,
+    "allowlist_verified": true,
+    "high_confidence_secret_candidates": 0,
+    "sha256": "66246262bb4d4a87264c18d491de7c91c9c8d454b8fc807e2c5da538258d2464"
+  },
+  "manual_review": "Candidates at tests/policy.test.cjs:150 and the corresponding historical blob are known fake test values; no credible secret identified. Heuristic scan is not a completeness guarantee."
 }

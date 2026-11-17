@@ -10,5 +10,6 @@
 node_modules/
 __pycache__/
 *.pyc
+dist/
 安全审核报告.md
 设计与实现说明.md

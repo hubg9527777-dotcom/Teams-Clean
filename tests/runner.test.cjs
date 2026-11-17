@@ -111,11 +111,12 @@ test('429按返回时间等待，再重试同一条，不虚增成功次数', as
   assert.equal(h.api.snapshot().success, 3)
 })
 
-test('结果不确定时暂停，继续后不重复删除那条记录', async () => {
+test('批量结果不确定时隔离该条并继续其他记录，续跑不重复提交', async () => {
   const h = harness((id, count) => count === 1 ? { status: 0, outcome: 'uncertain' } : { status: 204, outcome: 'success' })
   await h.api.run(false)
   assert.equal(h.api.snapshot().uncertain, 1)
-  assert.equal(h.api.snapshot().paused, true)
+  assert.equal(h.api.snapshot().paused, false)
+  assert.equal(h.api.snapshot().success, 2)
   await h.api.run(true)
   assert.equal(h.calls.filter(id => id === h.calls[0]).length, 1)
   assert.equal(h.api.snapshot().success, 2)

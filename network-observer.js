@@ -14,9 +14,9 @@ function sequential (work) {
 const read = async () => (await chrome.storage.session.get(KEY))[KEY] || null
 const write = data => chrome.storage.session.set({ [KEY]: data })
 function senderAllowed (sender) {
-  if (sender.id !== chrome.runtime.id || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0 ||
+  if (sender.id !== chrome.runtime.id || !Number.isInteger(sender.tab?.id) || sender.tab.id < 0 || sender.frameId !== 0 ||
     typeof sender.documentId !== 'string' || !sender.documentId || sender.documentId.length > 256) return false
-  try { return new URL(sender.url).origin === 'https://teams.live.com' } catch (_) { return false }
+  try { const url = new URL(sender.url); return url.protocol === 'https:' && url.origin === 'https://teams.live.com' && !url.username && !url.password } catch (_) { return false }
 }
 function activeFor (run, details) {
   if (!run || run.stopped || details.timeStamp < run.startedAt || details.timeStamp > run.startedAt + LIMIT_MS) return false

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Teams Clean",
-  "version": "6.0.5",
-  "description": "个人 Teams：聊天私有接口校准（实验）与录制后备，联络人和活动独立录制回放。",
+  "version": "6.3.1",
+  "description": "个人 Teams：聊天接口优先；聊天、联络人和活动按记录定位、核验移除、自动恢复与复扫。",
   "icons": {
     "128": "icon.png"
   },
@@ -18,6 +18,7 @@
       ],
       "js": [
         "core.js",
+        "dom-engine.js",
         "api-policy.js",
         "inject.js"
       ],

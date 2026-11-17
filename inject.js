@@ -1,6 +1,7 @@
 (() => {
   'use strict'
   const Core = globalThis.TeamsCleanCore
+  const Dom = globalThis.TeamsCleanDom
   const names = { chat: '聊天', contacts: '联络人', activity: '活动' }
   const STEP_APPEAR_TIMEOUT_MS = 15000
   let running = false
@@ -12,10 +13,11 @@
   let state = freshState()
   let ui
   const history = []
+  const acknowledgedAlerts = new WeakSet()
   const isolatedFetch = typeof fetch === 'function' ? fetch.bind(globalThis) : null
 
   function freshState () {
-    return { processed: new Set(), failed: new Set(), retries: new Map(), success: 0, skipped: 0, rounds: 0, rejected: new Set(), hidden: new Set(), uncertainIds: new Set(), phase: 'delete', hideSubmitted: new Set() }
+    return { processed: new Set(), failed: new Set(), retries: new Map(), issues: new Map(), unadaptedIds: new Set(), success: 0, skipped: 0, rounds: 0, rejected: new Set(), hidden: new Set(), uncertainIds: new Set(), phase: 'delete', hideSubmitted: new Set() }
   }
 
   function init () {
@@ -23,7 +25,7 @@
     const host = document.createElement('div')
     host.id = 'teams-clean-account-host'
     host.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:2147483647;font-family:Segoe UI,Arial,sans-serif;max-width:calc(100vw - 24px)'
-    const shadow = host.attachShadow({ mode: 'open' })
+    const shadow = host.attachShadow({ mode: 'closed' })
     const style = document.createElement('style')
     style.textContent = '#steps{white-space:pre-line;line-height:1.6;margin-top:8px;padding:7px;background:#f4f6fb;border-radius:4px;max-height:28vh;overflow:auto}:host([data-working="true"]) #steps,:host([data-working="true"]) label{display:none} .panel{box-sizing:border-box;width:340px;max-width:calc(100vw - 24px);padding:9px;background:#fff;color:#242424;border:1px solid #ccc;border-radius:8px;box-shadow:0 2px 10px #0002;font-size:12px}.tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap}button,select{height:30px;padding:0 10px;border-radius:5px;border:1px solid #ccc;font:inherit;font-size:12px;max-width:100%}button{cursor:pointer;background:#eee}button:disabled{cursor:default;opacity:.55}#start{background:#107c10;color:#fff}#stop{background:#d13438;color:#fff}#status{font-size:12px;margin-top:7px;overflow-wrap:anywhere;line-height:1.5}details{font-size:12px;margin-top:6px;max-height:38vh;overflow:auto}p{line-height:1.6}pre{max-height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}textarea{box-sizing:border-box;width:100%;font:11px monospace;margin-top:6px}:host([data-working="true"]) .panel{width:210px}:host([data-working="true"]) .tools>:not(#stop),:host([data-working="true"]) details,:host([data-working="true"]) #diagnostics{display:none!important}:host([data-working="true"]) #status{max-height:38px;overflow:hidden}'
 
@@ -60,7 +62,7 @@
     const summary = document.createElement('summary')
     summary.textContent = '接口支持说明 / 运行日志'
     const explanation = document.createElement('p')
-    explanation.textContent = 'v6.0.5：聊天接口直接发送删除请求，不回放鼠标操作；先手动校准一条，再核对接口单条删除，最后批量。仅通过浏览器层捕获当前同源 Groups DELETE 的认证头（临时保留在扩展内存，脱敏诊断不包含令牌）。个人 Teams 未提供公开 Graph 聊天删除支持，此处仍是私有接口。联络人、活动保留录制坐标和间隔，分别开分页并手动选择用途。校准在当前分页内存保留，后台休眠不会清空；刷新或认证失效时需要重新校准。'
+    explanation.textContent = 'v6.3.1：聊天仍优先使用已校准接口。录制改为按记录行和控件定位，自动等待菜单、确认移除、恢复已识别错误、从顶部复扫。窗口变化后重新定位，不按旧屏幕坐标盲点。联系人和活动的旧录制需要重新录制一次。未确认结果会单独列出，不计作成功。接口认证仅在内存中保留。'
     const log = document.createElement('pre')
     const diagnose = createButton('diagnose', '复制诊断')
     const diagnostics = document.createElement('textarea')
@@ -95,7 +97,8 @@
         const saved = (await chrome.storage.local.get(key))[key]
         if (!saved) return setStatus('该区域还没有录制，请先录制一条完整操作')
         if (recorder || busy) return
-        await startRun(saved, false)
+        const preserve = Boolean(pausedMacro && pausedMacro.engine !== 'api' && JSON.stringify(pausedMacro) === JSON.stringify(saved))
+        await startRun(saved, preserve)
       } catch (error) { setStatus(error.message) }
     })
     onUser(diagnose, 'click', exportDiagnostics)
@@ -117,7 +120,7 @@
       if (event.isTrusted && event.key === 'Escape' && (running || recorder || apiCalibration)) stopRun()
     }, true)
     setRunningUi()
-    setStatus(apiMode() ? 'v6.0.5：按面板三步操作。接口删除优先，结束后再隐藏明确被拒绝的记录。' : 'v6.0.5：选择用途后录制；暂停不会自动恢复。录制时的手动删除会立即生效。')
+    setStatus(apiMode() ? 'v6.3.1：按面板三步操作。接口删除优先，结束后再隐藏明确被拒绝的记录。' : 'v6.3.1：选择用途并打开列表，从一条记录开始录制完整删除。录制中的手动删除会立即生效。')
   }
 
   function createButton (id, text) {
@@ -141,7 +144,7 @@
     if (busy || recorder) return
     pausedMacro = null
     ui.details.open = false
-    recorder = { kind: ui.mode.value, trigger: null, actions: [], viewport: viewport(), lastEventTime: event.timeStamp }
+    recorder = { kind: ui.mode.value, trigger: null, actions: [], viewport: viewport(), page: { pathname: location.pathname, hash: location.hash }, lastEventTime: event.timeStamp, eventName: typeof PointerEvent === 'function' ? 'pointerdown' : 'mousedown' }
     recorder.onMouseDown = event => {
       if (!event.isTrusted || isExtensionEvent(event) || ![0, 2].includes(event.button)) return
       if (recorder.actions.length >= 40) { cancelRecording(); setStatus('超过 40 个后续点击，请录制较短流程'); return }
@@ -149,19 +152,23 @@
       step.delayMs = recordedDelay(event.timeStamp - recorder.lastEventTime)
       recorder.lastEventTime = event.timeStamp
       if (!recorder.trigger) {
-        const row = recorder.kind === 'chat' ? chatRowFor(event.target) : null
+        const row = recorder.kind === 'chat' ? chatRowFor(event.target) : Dom.rowFor(event.target)
+        try {
+          recorder.rowAnchor = Dom.capture(row)
+          recorder.sourceIdentity = Dom.identity(row)?.id
+        } catch (error) { cancelRecording(); setStatus(error.message); return }
         const rect = row?.getBoundingClientRect()
-        recorder.trigger = { ...step, relativeToRow: Boolean(rect), x: rect ? Math.round(event.clientX - rect.left) : step.x, y: rect ? Math.round(event.clientY - rect.top) : step.y }
+        recorder.trigger = { ...step, relativeToRow: Boolean(rect), rowTarget: !event.target.closest('button, [role="button"]'), rowX: (event.clientX - rect.left) / rect.width, rowY: (event.clientY - rect.top) / rect.height, x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) }
       } else recorder.actions.push(step)
     }
-    window.addEventListener('mousedown', recorder.onMouseDown, true)
+    window.addEventListener(recorder.eventName, recorder.onMouseDown, true)
     ui.action.textContent = '保存并执行'
     setRunningUi()
     setStatus(`正在录制${names[recorder.kind]}：请完整删除一条（包含确认），再点“保存并执行”；暂停可取消录制`)
   }
 
   function cancelRecording () {
-    if (recorder) window.removeEventListener('mousedown', recorder.onMouseDown, true)
+    if (recorder) window.removeEventListener(recorder.eventName, recorder.onMouseDown, true)
     recorder = null
     ui.action.textContent = '录制操作'
     setRunningUi()
@@ -170,9 +177,12 @@
   async function finishRecordingAndRun (event) {
     const recorded = recorder
     cancelRecording()
-    const macro = { version: 6, rowSchema: 2, kind: recorded.kind, trigger: recorded.trigger, actions: recorded.actions, trailingDelayMs: recordedDelay(event.timeStamp - recorded.lastEventTime), viewport: recorded.viewport }
+    const macro = { version: 6, rowSchema: 3, kind: recorded.kind, trigger: recorded.trigger, actions: recorded.actions, trailingDelayMs: recordedDelay(event.timeStamp - recorded.lastEventTime), viewport: recorded.viewport, rowAnchor: recorded.rowAnchor, page: recorded.page }
     try {
       Core.validateMacro(macro)
+      if (!macro.rowAnchor) throw new Error('请完整录制一条列表记录的删除操作')
+      if (![macro.trigger, ...macro.actions].some(step => Dom.destructive(step))) throw new Error('未录到删除、移除或隐藏控件，请录制完整删除流程')
+      if (Dom.scan(macro.rowAnchor).items.some(item => item.id === recorded.sourceIdentity)) throw new Error('刚才录制的记录仍在列表中，尚未确认删除；请等待页面同步后重新录制完整流程')
       if (macro.kind === 'chat' && !macro.trigger.relativeToRow) throw new Error('聊天后备必须从聊天列表的一行开始录制，请重新录制')
       const key = savedKey(macro.kind)
       await chrome.storage.local.set({ [key]: macro })
@@ -183,13 +193,18 @@
   function assertEnvironment (macro) {
     Core.assertActive(activeController?.signal)
     const current = viewport()
+    if (macro.rowSchema === 3) {
+      if (location.pathname !== macro.page?.pathname || location.hash !== macro.page?.hash) throw new Error('当前页面与录制时不同，请返回相应列表后继续')
+      Dom.rootFor(macro.rowAnchor)
+      return
+    }
     if (current.width !== macro.viewport.width || current.height !== macro.viewport.height || current.ratio !== macro.viewport.ratio) throw new Error('窗口大小或缩放已改变，已暂停；请恢复录制时的大小或重新录制')
   }
 
   async function startRun (macro, resumed) {
     if (busy || recorder) return
     try { if (macro.engine !== 'api') Core.validateMacro(macro) } catch (error) { setStatus(error.message); return }
-    if (macro.engine !== 'api' && macro.kind === 'chat' && macro.rowSchema !== 2) return setStatus('聊天录制行坐标已修复，请重新录制一条普通聊天；联络人和活动录制可保留')
+    if (macro.engine !== 'api' && macro.rowSchema !== 3) return setStatus('新版采用逐条核验清理；请重新录制一次完整删除，以建立列表定位')
     if (macro.kind !== ui.mode.value) return setStatus('录制用途与当前选择不一致，请重新选择')
     busy = true
     running = true
@@ -207,24 +222,7 @@
         if (!lock) throw new Error('另一个分页正在执行同一区域，请先暂停那个分页')
         Core.assertActive(signal)
         if (macro.engine === 'api') { await runApiChat(macro, signal) }
-        else if (macro.kind === 'chat') {
-          await Core.runChatQueue({
-            next: progress => getChatItems().find(item => !progress.failed.has(item.id) && !progress.processed.has(item.id)),
-            execute: async item => {
-              assertEnvironment(macro)
-              const result = await replayOne(macro, item.element)
-              if (result !== 'success') return result
-              return verifyChatRemoved(item)
-            },
-            scroll: scrollChatLists,
-            state, signal,
-            status: (progress, item, result, reason) => setStatus(`聊天：界面移除已确认 ${progress.success}，明确拒绝 ${progress.skipped}；${result === 'success' ? '完成' : reason || '当前步骤未完成'}`)
-          })
-          setStatus(`聊天扫描结束：界面移除已确认 ${state.success}，跳过 ${state.skipped}。仅覆盖本次加载到的列表，请刷新核对。`)
-        } else {
-          await Core.runFixedQueue({ execute: async () => { assertEnvironment(macro); return replayOne(macro, null) }, state, signal,
-            status: progress => setStatus(`${names[macro.kind]}：已回放 ${progress.rounds} 轮（轮数不等于已删除条数）`) })
-        }
+        else await runRecordedList(macro, signal)
         activeMacro = null
       })
     } catch (error) {
@@ -278,19 +276,124 @@
     updateSteps()
   }
 
-  async function replayOne (macro, row) {
+  async function runRecordedList (macro, signal) {
+    assertEnvironment(macro)
+    for (const issue of state.issues.values()) if (issue.outcome !== 'uncertain') issue.attempts = 0
+    await Core.runAdaptiveQueue({
+      scan: () => { assertEnvironment(macro); return Dom.scan(macro.rowAnchor) },
+      execute: item => executeRecordedItem(macro, item),
+      reset: () => Dom.scroll(macro.rowAnchor, true),
+      scroll: () => Dom.scroll(macro.rowAnchor),
+      reconcile: async (id, seen) => !seen.has(id),
+      wait: (ms, currentSignal) => Core.sleep(ms, currentSignal),
+      state, signal,
+      status: (progress, pass) => setStatus(`${names[macro.kind]}：第 ${pass}/3 遍，移除已确认 ${progress.success}，未完成 ${progress.failed.size}（待核对 ${progress.uncertainIds.size}）`)
+    })
+    setStatus(`${names[macro.kind]}扫描结束：移除已确认 ${state.success}，未完成 ${state.failed.size}，其中结果待核对 ${state.uncertainIds.size}。已从顶部复扫3遍；请刷新核对同步结果。${state.failed.size ? '可在运行日志查看未完成原因，未计为清理成功。' : ''}`)
+    for (const issue of state.issues.values()) setStatus(`未完成：${issue.reason}`)
+    // Keep the summary visible; details retain per-record failure reasons.
+    if (state.failed.size) setStatus(`${names[macro.kind]}扫描结束：移除已确认 ${state.success}，未完成 ${state.failed.size}（待核对 ${state.uncertainIds.size}）；详情见运行日志。`)
+    if (state.failed.size) pausedMacro = macro
+  }
+
+  async function executeRecordedItem (macro, item) {
+    const transaction = { submitted: false }
+    let result
+    try {
+      if (!await recoverRecordedUi(macro)) return { outcome: 'failure', fatal: true, reason: '无法关闭当前弹层，已保留进度，请检查页面' }
+      const current = Dom.scan(macro.rowAnchor).items.find(candidate => candidate.id === item.id)
+      if (!current || current.signature !== item.signature) return { outcome: 'uncertain', reason: '执行前记录已变化，未发送删除' }
+      current.element.scrollIntoView({ block: 'nearest' })
+      await delay(100)
+      const before = Dom.scan(macro.rowAnchor)
+      const guard = () => {
+        const root = Dom.rootFor(macro.rowAnchor)
+        const live = Dom.identity(current.element)
+        if (!current.element.isConnected || !root.contains(current.element) || !isVisible(current.element) || !live || live.id !== item.id || live.signature !== item.signature) throw new Error('等待期间记录已改变，已阻止点击变化后的记录')
+      }
+      result = await replayOne(macro, current.element, transaction, guard)
+      const outcome = typeof result === 'string' ? result : result?.outcome
+      if (outcome === 'success' && await waitForRecordRemoved(macro, item, before, 10000)) return 'success'
+      const lateFailure = getVisibleFailureDialog()
+      if (lateFailure) result = await handleFailureDialog(lateFailure)
+      const finalOutcome = typeof result === 'string' ? result : result?.outcome
+      if (finalOutcome === 'rejected' || finalOutcome === 'transient') {
+        if (!await recoverRecordedUi(macro)) return { outcome: 'failure', fatal: true, reason: '错误弹窗无法恢复' }
+        return { outcome: finalOutcome === 'rejected' ? 'rejected' : 'failure', reason: finalOutcome === 'rejected' ? 'Teams 明确拒绝此记录，将在下一遍复扫重试' : 'Teams 暂时失败，已关闭提示，将在下一遍复扫重试' }
+      }
+      if (!await recoverRecordedUi(macro)) return { outcome: 'failure', fatal: true, reason: '录制失败后弹层无法恢复' }
+      return { outcome: transaction.submitted ? 'uncertain' : 'failure', reason: result?.reason || (transaction.submitted ? '已提交点击但未确认移除，本轮不重复提交，继续处理其他记录' : '步骤尚未完成，下一遍从该记录重新定位') }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        if (transaction.submitted) { state.uncertainIds.add(item.id); state.failed.add(item.id); state.issues.set(item.id, { outcome: 'uncertain', reason: '提交后暂停，结果待核对' }) }
+        throw error
+      }
+      const recovered = await recoverRecordedUi(macro)
+      return { outcome: transaction.submitted ? 'uncertain' : 'failure', fatal: !recovered, reason: error.message }
+    }
+  }
+
+  async function waitForRecordRemoved (macro, item, before, timeoutMs) {
+    let absent = 0
+    for (let attempt = 0; attempt < Math.ceil(timeoutMs / 150); attempt++) {
+      Core.assertActive(activeController?.signal)
+      const failure = getVisibleFailureDialog()
+      if (failure) return false
+      const snapshot = Dom.scan(macro.rowAnchor)
+      // A virtualized row leaving the rendered window is not a deletion.
+      // Allow only scroll clamping caused by a shrinking list, not navigation.
+      if (before.scrollState.some(position => !position.element.isConnected || Math.abs(position.element.scrollTop - position.top) > Math.max(0, position.height - position.element.scrollHeight) + 2)) return false
+      const present = snapshot.items.some(current => current.id === item.id)
+      const loading = snapshot.root.closest('[aria-busy="true"]') || snapshot.root.querySelector('[role="progressbar"], [aria-busy="true"]')
+      if (!present && !loading) { if (++absent >= 5) return true } else absent = 0
+      await delay(150)
+    }
+    return false
+  }
+
+  async function recoverRecordedUi (macro) {
+    assertEnvironment(macro)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const failure = getVisibleFailureDialog()
+      if (failure) { await handleFailureDialog(failure); continue }
+      const layers = transientLayers(macro)
+      if (!layers.length) return true
+      const layer = layers[layers.length - 1]
+      if (!macro.actions.some(step => step.scope && Boolean(findRecordedScope(step.scope)) && findRecordedScope(step.scope) === layer)) return false
+      // Never confirm an unknown popup while recovering. Only cancel or dismiss.
+      const cancel = [...layer.querySelectorAll(Dom.ACTIONS)].find(element => Dom.enabled(element) && isVisible(element) && /^(cancel|close|dismiss|取消|关闭|關閉|cancelar|cerrar|fechar)$/i.test(getOwnVisibleText(element)))
+      if (cancel) {
+        const rect = cancel.getBoundingClientRect()
+        dispatchLeftClick(cancel, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+      } else if (layer.getAttribute('role') === 'menu' || layer.getAttribute('role') === 'listbox') {
+        layer.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, composed: true }))
+      } else return false
+      await delay(300)
+    }
+    return transientLayers(macro).length === 0
+  }
+
+  function transientLayers (macro) {
+    const root = macro.rowSchema === 3 ? Dom.rootFor(macro.rowAnchor) : null
+    return [...document.querySelectorAll('[role="menu"], [role="dialog"], [role="alertdialog"], [aria-modal="true"], [role="listbox"]')]
+      .filter(isVisible).filter(layer => !root || !layer.contains(root))
+  }
+
+  async function replayOne (macro, row, transaction = { submitted: false }, guard = () => {}) {
     assertEnvironment(macro)
     const failure = getVisibleFailureDialog()
     if (failure) return handleFailureDialog(failure)
-    if (row) { row.scrollIntoView({ block: 'center' }); await nextPaint() }
-    await delay(macro.trigger.delayMs)
+    if (row) { row.scrollIntoView({ block: 'nearest' }); await nextPaint() }
+    await delay(macro.rowSchema === 3 ? 100 : macro.trigger.delayMs)
     const target = await targetAtMacroPoint(macro, row)
     if (!target) return macroFailure('trigger', '首次点击未匹配录制控件（请重新录制；诊断将报告命中的节点）', macro.trigger, row)
-    await dispatchRecordedAction(target, replayPointForTrigger(target, macro, row), { ...macro.trigger, isTrigger: true })
+    guard()
+    if (macro.trigger.type === 'click' && !macro.trigger.rowTarget && Dom?.destructive(macro.trigger)) transaction.submitted = true
+    await dispatchRecordedAction(target, replayPointForTrigger(target, macro, row), { ...macro.trigger, isTrigger: true }, guard)
     for (let stepIndex = 0; stepIndex < macro.actions.length; stepIndex++) {
       const recordedStep = macro.actions[stepIndex]
       const step = normalizeRecordedStep(recordedStep)
-      await delay(step.delayMs)
+      await delay(macro.rowSchema === 3 ? Math.min(step.delayMs, 500) : step.delayMs)
       assertEnvironment(macro)
       const dialog = getVisibleFailureDialog()
       if (dialog) return handleFailureDialog(dialog)
@@ -299,20 +402,30 @@
       const lateDialog = getVisibleFailureDialog()
       if (lateDialog) return handleFailureDialog(lateDialog)
       if (!action) return macroFailure(`step-${stepIndex + 1}`, `第 ${stepIndex + 1} 个后续步骤未出现或未匹配；可能菜单未打开或页面忽略脚本事件`, step, row)
-      await dispatchRecordedAction(action, replayPointForAction(action, step), step)
+      // If a recorded row navigation opens an unscoped destructive button,
+      // require it to belong to this row or an explicit recorded popup.
+      if (macro.rowSchema === 3 && Dom.destructive(step) && !step.scope && !row?.contains(action)) return { outcome: 'failure', reason: '破坏性步骤不在当前记录或录制弹层内，请从记录菜单重新录制' }
+      guard()
+      if (Dom?.destructive(step)) transaction.submitted = true
+      await dispatchRecordedAction(action, replayPointForAction(action, step), step, guard)
     }
-    await delay(macro.trailingDelayMs)
+    await delay(macro.rowSchema === 3 ? 300 : macro.trailingDelayMs)
     const finalFailure = await waitForFailureDialog(650)
     if (finalFailure) return handleFailureDialog(finalFailure)
-    if (!await waitForFixedPositionToSettle(macro, 10000)) throw new Error('菜单或确认弹窗长时间未关闭，请手动检查')
+    if (!await waitForFixedPositionToSettle(macro, 10000)) throw new Error('菜单或确认弹窗长时间未关闭')
     return 'success'
   }
 
   async function handleFailureDialog (dialog) {
+    const outcome = Dom?.failureKind(getAccessibleText(dialog)) || 'rejected'
+    if (dialog.getAttribute('role') === 'alert' && dialog.getAttribute('aria-modal') !== 'true') {
+      acknowledgedAlerts.add(dialog)
+      return outcome
+    }
     closeFailureDialog(dialog)
     for (let attempt = 0; attempt < 20; attempt++) {
       await delay(100)
-      if (!getVisibleFailureDialog()) return 'rejected'
+      if (!getVisibleFailureDialog()) return outcome
     }
     throw new Error('失败弹窗无法关闭，请手动点击确定后继续')
   }
@@ -328,11 +441,15 @@
     throw new Error('点击已完成，但未确认该聊天从列表移除，请检查后继续')
   }
 
-  async function dispatchRecordedAction (target, point, step) {
+  async function dispatchRecordedAction (target, point, step, guard = () => {}) {
     assertEnvironment(activeMacro)
+    guard()
+    if (Dom && !Dom.enabled(target)) throw new Error('控件尚未启用，将重新定位')
     if (!target?.isConnected || (!isVisible(target) && !(step.isTrigger && hoverControlAvailable(target)))) throw new Error('点击前控件已消失，请检查后继续')
     dispatchMouseMove(target, point)
-    return isRightMouseAction(step) ? dispatchRightClick(target, point) : dispatchLeftClick(target, point)
+    guard()
+    if (!target.isConnected) throw new Error('悬停期间控件已变化，已阻止继续点击')
+    return isRightMouseAction(step) ? dispatchRightClick(target, point, guard) : dispatchLeftClick(target, point, guard)
   }
   let localNetworkTemplate = null
   let calibrationSerial = 0
@@ -343,6 +460,7 @@
   let lastNetworkResult = null
   let networkHeartbeat = null
   let networkDeadline = 0
+  let templateExpiryTimer = null
   let calibrationIssue = null
   let apiCalibration = false
   let apiReady = false
@@ -415,6 +533,8 @@
           const info = await networkCommand('ack-calibration')
           localNetworkTemplate = info.executionTemplate || null
           if (!localNetworkTemplate) throw new Error('未取得分页内校准模板，请重新校准')
+          networkDeadline = Date.now() + 300000
+          armTemplateExpiry()
           stopNetworkHeartbeat()
         }
         apiManualAck = false
@@ -441,7 +561,7 @@
   function updateSteps () {
     if (!ui.steps) return
     if (!apiMode()) {
-      ui.steps.textContent = recorder ? '当前：完整手动删除一条，包含确认。\n下一步：点击“保存并执行”，会立即回放后续记录。' : `录制步骤：\n1. 手动打开${names[ui.mode.value]}列表，保持窗口大小和缩放。\n2. 点击“录制操作”，完整手动删除一条。\n3. 点击“保存并执行”，立即开始回放。\n已有录制：点击“开始清理”。停止：点击“暂停”；恢复：点击“继续执行”。`
+      ui.steps.textContent = recorder ? '当前：完整手动删除一条，包含确认。\n下一步：点击“保存并执行”，会立即清理后续记录。' : `录制步骤：\n1. 手动打开${names[ui.mode.value]}列表。\n2. 点击“录制操作”，从一条记录的右键或更多按钮开始，完整删除一条。\n3. 等待该条消失，再点击“保存并执行”。\n自动逐条核验、关闭已识别错误、从顶部复扫3遍。旧录制需更新一次。\n停止：点击“暂停”；恢复：点击“继续执行”。`
       return
     }
     const preview = getChatItems().find(item => TeamsCleanApiPolicy.chatId(item.id) && !/只有我|only me|just me/i.test(getOwnVisibleText(item.element)))
@@ -476,8 +596,34 @@
     return Promise.reject(new Error('未知接口操作'))
   }
 
+  function expireNetworkTemplate () {
+    clearTimeout(templateExpiryTimer)
+    templateExpiryTimer = null
+    localNetworkTemplate = null
+    apiReady = false
+    apiVerified = false
+  }
+
+  function armTemplateExpiry () {
+    clearTimeout(templateExpiryTimer)
+    if (!localNetworkTemplate) return
+    templateExpiryTimer = setTimeout(() => {
+      if (Date.now() < networkDeadline) return armTemplateExpiry()
+      expireNetworkTemplate()
+      if (!busy) { setRunningUi(); setStatus('接口校准已超过五分钟未成功使用，凭据已清除，请重新校准') }
+    }, Math.max(1, networkDeadline - Date.now()))
+    // Node-based isolated tests use timer objects; browsers return numeric IDs.
+    templateExpiryTimer?.unref?.()
+  }
+
   async function sendNetworkDelete (id) {
     if (!isolatedFetch) { const error = new Error('当前环境不支持独立接口请求'); error.notSent = true; throw error }
+    if (localNetworkTemplate && Date.now() >= networkDeadline) {
+      expireNetworkTemplate()
+      const error = new Error('接口校准已过期，未发送请求，请重新校准')
+      error.notSent = true
+      throw error
+    }
     let prepared
     try { prepared = localNetworkTemplate
       ? { request: TeamsCleanApiPolicy.requestFor(localNetworkTemplate, id), headers: localNetworkTemplate.headers }
@@ -496,14 +642,14 @@
       if (response.status !== 200) await response.body?.cancel().catch(() => {})
       outcome = TeamsCleanApiPolicy.result(response.status, text)
       lastNetworkResult = { status: response.status, outcome, responseKeys: TeamsCleanApiPolicy.schema(text) }
-      if (outcome === 'success') networkDeadline = Date.now() + 300000
+      if (outcome === 'success' && localNetworkTemplate) { networkDeadline = Date.now() + 300000; armTemplateExpiry() }
       return { status: response.status, outcome, retryMs: TeamsCleanApiPolicy.retryAfter(response.headers.get('Retry-After')) }
     } catch (_) { lastNetworkResult = { status: 0, outcome: 'uncertain', responseKeys: [] }; return { status: 0, outcome: 'uncertain', retryMs: 0 } }
     finally {
       clearTimeout(timeout)
       parentSignal?.removeEventListener('abort', abort)
       if (!localNetworkTemplate) await networkCommand('release-delete', { outcome }).catch(() => {})
-      if (outcome === 'auth') localNetworkTemplate = null
+      if (outcome === 'auth') expireNetworkTemplate()
     }
   }
 
@@ -534,19 +680,25 @@
     if (!apiVerified && !apiProbe) throw new Error('请完成第2步接口单条验证，核对聊天确实移除后再点击第3步')
     if (state.phase === 'hide' && !macro.targetId) return runHideRejected(signal)
     let emptyRounds = 0
+    let sweep = 0
+    if (!macro.targetId) { resetChatLists(); await delay(500) }
     let consecutiveRejected = 0
     const cancel = () => { apiCommand('cancel').catch(() => {}) }
     signal.addEventListener('abort', cancel, { once: true })
     try {
       for (;;) {
         Core.assertActive(signal)
+        for (const candidate of getChatItems()) {
+          if (!TeamsCleanApiPolicy.chatId(candidate.id) || candidate.id.split('@')[1] !== apiFamily) state.unadaptedIds.add(candidate.id)
+        }
         const item = apiCandidates().find(candidate => (!macro.targetId || macro.targetId === candidate.id) && !state.failed.has(candidate.id) && !state.processed.has(candidate.id))
         if (!item) {
           if (macro.targetId) throw new Error('指定验证聊天已移除或当前未加载，请重新选择目标')
           const moved = scrollChatLists()
           emptyRounds = moved ? 0 : emptyRounds + 1
           if (emptyRounds >= 5) {
-            const incompatible = getChatItems().filter(candidate => !TeamsCleanApiPolicy.chatId(candidate.id) || candidate.id.split('@')[1] !== apiFamily).length
+            if (++sweep < 3) { resetChatLists(); emptyRounds = 0; await delay(700); continue }
+            const incompatible = state.unadaptedIds.size
             setStatus(`接口队列结束：返回成功 ${state.success}，跳过 ${state.skipped}，结果待核对 ${state.uncertain || 0}；当前另有 ${incompatible} 条未适配类型。请刷新核对，仅覆盖已加载的列表。`)
             if (state.autoHide && state.rejected.size && !state.uncertainIds.size) { state.phase = 'hide'; await runHideRejected(signal) }
             return
@@ -603,7 +755,8 @@
           state.failed.add(item.id)
           state.uncertainIds.add(item.id)
           state.uncertain = (state.uncertain || 0) + 1
-          throw new Error(`请求结果无法确认（HTTP ${response.status}）；当前聊天不自动重发，请先在 Teams 核对，再继续其他记录`)
+          if (macro.targetId) throw new Error(`单条验证结果无法确认（HTTP ${response.status}），不能启用批量，请先在 Teams 核对`)
+          setStatus(`一条请求结果待核对（HTTP ${response.status}），已隔离且不自动重发；继续其他聊天。待核对 ${state.uncertainIds.size}`)
         }
         await delay(1000)
       }
@@ -703,22 +856,40 @@
     return step?.type === 'contextmenu' || step?.button === 2
   }
 
-  function dispatchLeftClick (target, point) {
+  function dispatchLeftClick (target, point, guard = () => {}) {
     if (!running || !target || typeof target.dispatchEvent !== 'function') return false
+    guard()
     dispatchPointerIfSupported(target, 'pointerdown', point, 0, 1)
+    guard()
+    if (!target.isConnected) return true
     target.dispatchEvent(mouseEvent('mousedown', point, 0, 1))
+    guard()
+    if (!target.isConnected) return true
     dispatchPointerIfSupported(target, 'pointerup', point, 0, 0)
+    guard()
+    if (!target.isConnected) return true
     target.dispatchEvent(mouseEvent('mouseup', point, 0, 0))
+    guard()
+    if (!target.isConnected) return true
     target.dispatchEvent(mouseEvent('click', point, 0, 0))
     return true
   }
 
-  function dispatchRightClick (target, point) {
+  function dispatchRightClick (target, point, guard = () => {}) {
     if (!running || !target || typeof target.dispatchEvent !== 'function') return false
+    guard()
     dispatchPointerIfSupported(target, 'pointerdown', point, 2, 2)
+    guard()
+    if (!target.isConnected) return true
     target.dispatchEvent(mouseEvent('mousedown', point, 2, 2))
+    guard()
+    if (!target.isConnected) return true
     dispatchPointerIfSupported(target, 'pointerup', point, 2, 0)
+    guard()
+    if (!target.isConnected) return true
     target.dispatchEvent(mouseEvent('mouseup', point, 2, 0))
+    guard()
+    if (!target.isConnected) return true
     target.dispatchEvent(mouseEvent('contextmenu', point, 2, 0))
     return true
   }
@@ -753,6 +924,7 @@
   function macroPoint (macro, row) {
     if (macro.trigger.relativeToRow && row) {
       const rect = row.getBoundingClientRect()
+      if (macro.rowSchema === 3) return { x: Math.round(rect.left + Math.max(0.02, Math.min(0.98, macro.trigger.rowX)) * rect.width), y: Math.round(rect.top + Math.max(0.05, Math.min(0.95, macro.trigger.rowY)) * rect.height) }
       return { x: Math.round(rect.left + macro.trigger.x), y: Math.round(rect.top + macro.trigger.y) }
     }
     return { x: macro.trigger.x, y: macro.trigger.y }
@@ -766,6 +938,14 @@
     }
     let point = macroPoint(macro, row)
     let target = pageElementFromPoint(point.x, point.y)
+    if (macro.rowSchema === 3 && row) {
+      revealTarget(row, row)
+      await delay(150)
+      point = macroPoint(macro, row)
+      target = pageElementFromPoint(point.x, point.y)
+      if (macro.trigger.type === 'contextmenu' || macro.trigger.rowTarget) return row.contains(target) ? target : null
+      return findMatchingTriggerControl(row, macro.trigger.control, point)
+    }
     if (!target || !isVisible(target)) return null
     const rowCandidate = row || interactionRowFor(target)
     revealTarget(target, rowCandidate)
@@ -796,6 +976,7 @@
     const candidates = [...root.querySelectorAll('button, [role="button"], [role="menuitem"], [role="option"], [data-tid]')]
       .filter(element => hoverControlAvailable(element) || isVisible(element))
       .filter(element => !isExtensionElement(element))
+      .filter(element => !Dom || Dom.enabled(element))
       .filter(element => matchesRecordedControl(element, { control, label: control.label }))
       .sort((a, b) => distanceToPoint(a, point) - distanceToPoint(b, point))
     return candidates[0] || null
@@ -810,7 +991,7 @@
     row?.scrollIntoView({ block: 'nearest' })
     const subject = row || target
     if (!subject || typeof subject.dispatchEvent !== 'function') return false
-    subject.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))
+    if (typeof PointerEvent === 'function') subject.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }))
     subject.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
     subject.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
     return true
@@ -826,7 +1007,7 @@
         ? findRecordedAction(step)
         : actionAtRecordedPoint(step) || findRecordedAction(step)
       if (getVisibleFailureDialog()) return null
-      if (action) return action
+      if (action && (!Dom || Dom.enabled(action))) return action
       await delay(100)
     }
     return null
@@ -849,9 +1030,8 @@
     while (running && performance.now() - startedAt < timeoutMs) {
       const point = macroPoint(macro, null)
       const target = pageElementFromPoint(point.x, point.y)
-      const transientUi = [...document.querySelectorAll('[role="menu"], [role="dialog"], [aria-modal="true"], [role="listbox"]')]
-        .filter(isVisible)
-      if (target && transientUi.length === 0) {
+      const transientUi = transientLayers(macro)
+      if ((macro.rowSchema === 3 || target) && transientUi.length === 0) {
         await delay(350)
         return true
       }
@@ -867,9 +1047,17 @@
     const candidates = [...(scope || document).querySelectorAll('button, [role="button"], [role="menuitem"], [role="option"], [data-tid]')]
       .filter(isVisible)
       .filter(element => !isExtensionElement(element))
+      .filter(element => !Dom || Dom.enabled(element))
       .filter(element => matchesRecordedControl(element, step))
       .sort((a, b) => scoreRecordedControl(b, step) - scoreRecordedControl(a, step))
-    if (candidates[0]) return candidates[0]
+    if (candidates[0] && (candidates.length === 1 || scoreRecordedControl(candidates[0], step) > scoreRecordedControl(candidates[1], step))) return candidates[0]
+    if (candidates.length > 1) return null
+
+    if (scope && Dom?.destructive(step)) {
+      const semantic = [...scope.querySelectorAll(Dom.ACTIONS)].filter(isVisible).filter(Dom.enabled)
+        .filter(element => Dom.intent({ label: getOwnVisibleText(element) }) === Dom.intent(step))
+      if (semantic.length === 1) return semantic[0]
+    }
 
     // Teams 可能在小版本更新后改变 data-tid 或 aria 标签。仍限制在录制时
     // 的弹层内按按钮文字找，确保是“当前菜单的删除”，不是页面其他同名按钮。
@@ -887,10 +1075,11 @@
 
   function findRecordedScope (scope) {
     if (!scope) return null
-    const scopes = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], [role="menu"], [role="listbox"]')]
+    const scopes = [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [aria-modal="true"], [role="menu"], [role="listbox"]')]
       .filter(isVisible)
       .filter(element => scope.role ? element.getAttribute('role') === scope.role || (scope.modal && element.getAttribute('aria-modal') === 'true') : true)
-    return scopes.sort((a, b) => scopeSimilarity(b, scope) - scopeSimilarity(a, scope))[0] || null
+    scopes.sort((a, b) => scopeSimilarity(b, scope) - scopeSimilarity(a, scope))
+    return scopes.length === 1 || (scopes[0] && scopeSimilarity(scopes[0], scope) > scopeSimilarity(scopes[1], scope)) ? scopes[0] : null
   }
 
   function scopeSimilarity (element, scope) {
@@ -905,6 +1094,8 @@
   function matchesRecordedControl (element, step) {
     const control = step.control
     if (!control) return step.label && getOwnVisibleText(element).toLocaleLowerCase() === step.label.toLocaleLowerCase()
+    if (Dom?.destructive(step) && Dom.intent(step) !== Dom.intent({ label: getOwnVisibleText(element), control: { tid: element.getAttribute('data-tid'), aria: element.getAttribute('aria-label') } })) return false
+    if (Dom?.intent(step) === 'menu' && Dom.intent({ label: getOwnVisibleText(element), control: { tid: element.getAttribute('data-tid') } }) === 'menu') return true
     if (control.tid && element.getAttribute('data-tid') === control.tid) return true
     if (control.aria && element.getAttribute('aria-label') === control.aria) return true
     if (control.label && getOwnVisibleText(element).toLocaleLowerCase() === control.label.toLocaleLowerCase()) return true
@@ -947,11 +1138,12 @@
   function findExactAction (label, root = document) {
     if (!label || !root || typeof root.querySelectorAll !== 'function') return null
     const wanted = label.toLocaleLowerCase()
-    const matches = [...root.querySelectorAll('button, [role="button"], [role="menuitem"], [data-tid], div, span')]
+    const matches = [...root.querySelectorAll('button, [role="button"], [role="menuitem"]')]
       .filter(isVisible)
+      .filter(element => !isExtensionElement(element) && (!Dom || Dom.enabled(element)))
       .filter(element => getOwnVisibleText(element).toLocaleLowerCase() === wanted)
       .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)
-    const match = matches[0]
+    const match = matches.length === 1 ? matches[0] : null
     return match?.closest('button, [role="button"], [role="menuitem"], [data-tid*="menu"], [data-tid*="delete"], [data-tid*="remove"]') || match || null
   }
 
@@ -960,7 +1152,7 @@
     const target = event.target instanceof Element ? event.target : null
     const element = interactiveControlFor(target) || target
     const rect = element?.getBoundingClientRect()
-    const scopeElement = element?.closest('[role="dialog"], [aria-modal="true"], [role="menu"], [role="listbox"]')
+    const scopeElement = element?.closest('[role="dialog"], [role="alertdialog"], [aria-modal="true"], [role="menu"], [role="listbox"]')
     let label = ''
     for (const node of event.composedPath()) {
       if (node instanceof Element) {
@@ -1009,9 +1201,14 @@
   }
 
   function getVisibleFailureDialog () {
-    return [...document.querySelectorAll('[role="dialog"], [aria-modal="true"]')]
+    const candidates = [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="alert"], [aria-modal="true"]')]
       .filter(isVisible)
-      .find(dialog => /无法删除|無法刪除|不能删除|不能刪除|cannot delete|can't delete|try again|稍后再试|稍後再試/i.test(getAccessibleText(dialog))) || null
+      .filter(element => !acknowledgedAlerts.has(element))
+      .filter(dialog => {
+        const text = (dialog.getAttribute('aria-label') || '') + ' ' + (dialog.innerText || dialog.textContent || '')
+        return Dom ? Dom.failureKind(text) : /无法删除|無法刪除|不能删除|不能刪除|cannot delete|can't delete|try again|稍后再试|稍後再試/i.test(text)
+      })
+    return candidates.find(dialog => !candidates.some(other => other !== dialog && dialog.contains(other))) || null
   }
 
   async function waitForFailureDialog (timeoutMs) {
@@ -1026,7 +1223,7 @@
   }
 
   function closeFailureDialog (dialog) {
-    const okay = ['确定', '確定', 'ok'].map(label => findExactAction(label, dialog)).find(Boolean)
+    const okay = ['确定', '確定', 'ok', 'close', 'dismiss', '关闭', '關閉', 'aceptar', 'cerrar', 'entendido', 'fechar'].map(label => findExactAction(label, dialog)).find(Boolean)
     if (okay && dialog.contains(okay)) {
       const rect = okay.getBoundingClientRect()
       dispatchLeftClick(okay, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
@@ -1107,6 +1304,12 @@
     return moved
   }
 
+  function resetChatLists () {
+    for (const element of document.querySelectorAll('[data-tid*="chat-list"], [role="tree"], .fui-Tree')) {
+      if (isVisible(element) && element.scrollHeight > element.clientHeight + 8) element.scrollTop = 0
+    }
+  }
+
   function setStatus (message) {
     if (!ui) return
     ui.status.textContent = message
@@ -1152,7 +1355,7 @@
       hitRole: diagnosticRole(hit),
       rowRole: diagnosticRole(row), rowConnected: Boolean(row?.isConnected),
       visibleMenus: [...document.querySelectorAll('[role="menu"], [role="dialog"], [aria-modal="true"]')].filter(isVisible).length }
-    return { outcome: 'failure', fatal: true, reason }
+    return { outcome: 'failure', fatal: activeMacro?.rowSchema !== 3, reason }
   }
 
   function diagnosticRole (element) {
@@ -1178,7 +1381,7 @@
     const page = await apiCommand('status').catch(() => ({ unavailable: true }))
     const network = await networkCommand('report').catch(() => ({ unavailable: true, note: '请完成一次接口校准后再导出网络诊断' }))
     const macro = activeMacro || pausedMacro
-    const data = { version: '6.0.5', kind: ui.mode.value, mode: ui.engine.value,
+    const data = { version: '6.3.1', kind: ui.mode.value, mode: ui.engine.value, progress: { confirmed: state.success, unresolved: state.failed.size, uncertain: state.uncertainIds.size, attempts: state.rounds },
       viewport: viewport(), recording: macro && macro.engine !== 'api' ? { kind: macro.kind, rowSchema: macro.rowSchema || null, triggerType: macro.trigger.type, stepCount: macro.actions.length, viewport: macro.viewport } : null,
       transport: apiTransport, calibrationIssue, lastNetworkResult, macroFailure: lastMacroDiagnostic, page: { hooks: page.hooks || null, observation: page.observation || null, diagnostic: page.diagnostic || null }, network }
     const text = JSON.stringify(data, null, 2)

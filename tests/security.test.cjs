@@ -41,6 +41,7 @@ test('没有 MAIN、网页消息桥、远程脚本或多域名网络权限', () 
 test('后台拒绝同源子框架、缺失文档标识、非本扩展、伪域名及主页面URL回退', async () => {
   const h = worker()
   for (const extra of [{ frameId: 1 }, { frameId: undefined }, { documentId: undefined }, { documentId: '' },
+    { url: 'blob:https://teams.live.com/same-origin-object' }, { tab: { id: -1 } },
     { id: 'other-extension' }, { url: 'https://teams.live.com.evil.example/' }, { url: undefined, tab: { id: 10, url: 'https://teams.live.com' } }]) {
     assert.equal(await h.command('begin', {}, { ...h.sender, ...extra }), null)
   }

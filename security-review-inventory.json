@@ -1,0 +1,179 @@
+{
+  "date": "2026-11-17",
+  "version": "6.3.1",
+  "runtime_dependencies": [],
+  "local_lockfiles": [],
+  "ci_actions": [
+    {
+      "name": "actions/checkout",
+      "version": "7.0.1",
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1"
+    },
+    {
+      "name": "actions/setup-node",
+      "version": "7.1.0",
+      "sha": "949feb2413d6458794dcd2491c4babbbce0c15c1"
+    },
+    {
+      "name": "softprops/action-gh-release",
+      "version": "3.0.4",
+      "sha": "8a0cd651e5b2365bd640854a3fa5dfc70e4875f3"
+    }
+  ],
+  "ci_transitive_inventory": "pending: upstream raw lockfiles/bundles could not be fetched",
+  "files": [
+    {
+      "path": ".github/workflows/release.yml",
+      "bytes": 1684,
+      "sha256": "1c398608f0583812b9866816c58252b939309f408952d3e20783d84f9191ccad"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 152,
+      "sha256": "948714089cd698070dc66799e2308a77466d1b0bec49f99a0939e3ec0e71b2e0"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 2530,
+      "sha256": "d31d06a8b74f4354e0b7798bcef74adbb19b4bc989a73bf9a83d66c14ad27a3c"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1064,
+      "sha256": "653bd91bc65b1a70c92ed3e32a7c7281259e1623ddf75439fdd8ad8f34e9b814"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6534,
+      "sha256": "2e6daa59807ad932f3801e02ad0c796351204ac2a759d1cdda49cb3b76d200ca"
+    },
+    {
+      "path": "SECURITY-AUDIT.md",
+      "bytes": 23357,
+      "sha256": "8dff908e9cb5776344fcec8b3283396f135c23a69d6dc8d69d4195dfd6122388"
+    },
+    {
+      "path": "api-policy.js",
+      "bytes": 9256,
+      "sha256": "4b9a807ad074d53a40e2835d250d2493fe1c91316f0dcf14226f60f479f24583"
+    },
+    {
+      "path": "core.js",
+      "bytes": 9590,
+      "sha256": "9f69f538119b7883b7349b9fdb091bad2be3293019f08b237b4bd853e1005f61"
+    },
+    {
+      "path": "dom-engine.js",
+      "bytes": 10508,
+      "sha256": "f99aaccbf5c2715e43d6371405a129ec69d8f8b30d76044197e96bbdcd7a23f8"
+    },
+    {
+      "path": "icon.png",
+      "bytes": 1485490,
+      "sha256": "803f83b8dd9fdad7ac3314a8b6bdb2ff2d3983cc5c9e99b1539db60335d76f02"
+    },
+    {
+      "path": "inject.js",
+      "bytes": 77027,
+      "sha256": "e73a9ab1578f716cbf253dd485de591696efa7230a5e57275e3a10ee87c68e07"
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 836,
+      "sha256": "6cadf27209b05c3079b4461990c65628167829e165fdbc623568d63764db5ba6"
+    },
+    {
+      "path": "network-api.js",
+      "bytes": 6234,
+      "sha256": "24b3c33e1373ffbb4369d364a17aea3f7f6677ce49a3066dfbc2441567c37145"
+    },
+    {
+      "path": "network-observer.js",
+      "bytes": 6583,
+      "sha256": "a8a844bb30dd113812fd5ff917fe991d2ab811ed4d94f61915ee3b55ade00a34"
+    },
+    {
+      "path": "scripts/package.cjs",
+      "bytes": 2547,
+      "sha256": "ae40d736280d14c7a41799e7245877359f6be56d05966deea6a0d4ad3d4bc059"
+    },
+    {
+      "path": "scripts/security-scan.cjs",
+      "bytes": 4454,
+      "sha256": "754158546e649528e7d373c265c944a6809521ce2b91da60e805f2e23b10d25f"
+    },
+    {
+      "path": "security-regression.jpg",
+      "bytes": 60340,
+      "sha256": "86914ea10687be8a26d4b3e48502be202c07745bc530df3b4f221df68df20ba4"
+    },
+    {
+      "path": "test-results.txt",
+      "bytes": 8903,
+      "sha256": "8cc8f335a3e848ea100cc1598d297affc62bddbda75455c2dffcf860e2dc4917"
+    },
+    {
+      "path": "tests/adaptive.test.cjs",
+      "bytes": 7124,
+      "sha256": "9f4eaee802282d70ed3f05d264e33758741b5ea577fcdccf3d3150c9ecc7c8da"
+    },
+    {
+      "path": "tests/browser-fixture.html",
+      "bytes": 3734,
+      "sha256": "551083f0efbcef9636935d403e18ef54eaccd5d05a332aa213b4f02f0cda7ef3"
+    },
+    {
+      "path": "tests/diagnostics.test.cjs",
+      "bytes": 5941,
+      "sha256": "32ad520ddcc959b889e3631a1a3f5b7000c9a9804fecdfbfc5deae14998ed139"
+    },
+    {
+      "path": "tests/dom-harness.cjs",
+      "bytes": 9242,
+      "sha256": "17c6c4b618a260c27bf52113602de2d8bb374724eba135ed779ac69a95f35e7e"
+    },
+    {
+      "path": "tests/dom.test.cjs",
+      "bytes": 6835,
+      "sha256": "3b91645a466f027a0992f533aaf71f55509b292b29ed71dd08decbbf807e6d20"
+    },
+    {
+      "path": "tests/hardening.test.cjs",
+      "bytes": 4576,
+      "sha256": "d7e487a2496bd41b5c2ed66335727a0693f083829f7611a825bf90cd208c37cb"
+    },
+    {
+      "path": "tests/network-api.test.cjs",
+      "bytes": 6042,
+      "sha256": "e4ae0a1e7c823d975a26b7803fc0be2f96cdb798306c1b19568d2a2750004d6b"
+    },
+    {
+      "path": "tests/network-ui.test.cjs",
+      "bytes": 12981,
+      "sha256": "a3fd2ca954e854275c72ce5dc31ddc96b617fd2ce01fd11f61163ff4838a34cb"
+    },
+    {
+      "path": "tests/policy.test.cjs",
+      "bytes": 8889,
+      "sha256": "a0e3409da5f846c649333aa5cd08ace510f4b0384ddd5c2f055b4addf5116faf"
+    },
+    {
+      "path": "tests/runner.test.cjs",
+      "bytes": 11189,
+      "sha256": "dc4b3b8e1136216e382dfdecb31ed02bd1b33e4b69d6c5ab2b699acf16882b85"
+    },
+    {
+      "path": "tests/security.test.cjs",
+      "bytes": 6004,
+      "sha256": "129280ae6bef513a788830237cb17c8c03bfed10a84cad6039486d108decee63"
+    }
+  ],
+  "artifact": {
+    "file": "Teams-Clean-v6.3.1.zip",
+    "entries": 11,
+    "crc_verified": true,
+    "allowlist_verified": true,
+    "high_confidence_secret_candidates": 0,
+    "sha256": "66246262bb4d4a87264c18d491de7c91c9c8d454b8fc807e2c5da538258d2464"
+  }
+}
